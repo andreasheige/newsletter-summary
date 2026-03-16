@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import clsx from 'clsx'
 import type { Newsletter, ContentSection } from '../../shared/types'
-import { TAG_COLORS, TAG_COLORS_DARK, tagColorIndex, getTagColor } from '../tagColors'
+import { TAG_COLORS, tagColorIndex, getTagColor } from '../tagColors'
 
 function stripEmojis(text: string): string {
   if (!text) return ''
@@ -11,22 +12,18 @@ function stripEmojis(text: string): string {
     .trim()
 }
 
-/** Check if a section body is real content vs junk (MIME, raw headers, etc.) */
 function isRealContent(body: string): boolean {
   if (!body || body.length < 20) return false
-  // Junk indicators: MIME headers, raw email source, "Sign Up" TLDR header noise
   if (/^(Delivered-To:|Received:|From:|DKIM|ARC-|Sign Up \|)/i.test(body)) return false
   if (/Content-Type:|boundary=/i.test(body.slice(0, 200))) return false
   return true
 }
 
-/** Clean summary text: strip LLM preamble, trailing tags text */
 function cleanSummary(text: string): string {
   if (!text) return ''
   return text
     .replace(/^Here(?:'s| is) (?:a |the )?summary[^:]*:\s*/i, '')
     .replace(/^Summary:\s*/i, '')
-    // Strip trailing tags in all LLM formats: JSON array, bullets, numbered list
     .replace(/\s*(?:Here are \d+ topic )?[Tt]ags:?\s*[\s\S]*$/i, '')
     .trim()
 }
@@ -37,13 +34,20 @@ interface AccordionItemProps {
 
 function SectionBlock({ section }: { section: ContentSection }) {
   return (
-    <div className="content-section">
-      {section.title && <h4 className="section-title">{stripEmojis(section.title)}</h4>}
+    <div className="pb-3 border-b border-border last:border-b-0">
+      {section.title && (
+        <h4 className="text-[0.95rem] font-semibold tracking-tight mb-1.5 text-text-primary">{stripEmojis(section.title)}</h4>
+      )}
       {section.links.length > 0 && (
-        <ul className="link-list">
+        <ul className="list-none mt-5 p-0 flex flex-col gap-2.5">
           {section.links.map((link, i) => (
-            <li key={i} className="link-item">
-              <a href={link.url || '#'} target="_blank" rel="noopener noreferrer">
+            <li key={i} className="text-sm leading-relaxed">
+              <a
+                href={link.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-primary no-underline font-medium border-b border-border hover:border-text-primary transition-colors"
+              >
                 {link.label || link.url}
               </a>
             </li>
@@ -61,34 +65,39 @@ export function AccordionItem({ item }: AccordionItemProps) {
     year: 'numeric', month: 'short', day: 'numeric',
   })
 
-  // Content sections: only show if they have real content (not junk MIME)
   const contentSections = item.content?.sections?.filter(
     s => s.links.length > 0 || (s.title && isRealContent(s.body))
   ) ?? []
   const hasContent = contentSections.length > 0
-
-  // Flat links from old format (title + description)
   const flatLinks = item.links ?? []
 
   return (
-    <div className={`accordion ${open ? 'open' : ''}`}>
-      <button className="accordion-header" onClick={() => setOpen(!open)}>
-        <div className="accordion-meta">
-          <div className="accordion-subject">{stripEmojis(item.subject)}</div>
-          <div className="accordion-info">
+    <div className={clsx(
+      '-mx-6 px-6 border-b border-border transition-colors',
+      open && 'bg-bg-secondary'
+    )}>
+      <button
+        className="w-full bg-transparent border-none py-6 cursor-pointer text-left grid grid-cols-[1fr_auto] gap-6 items-start font-sans text-text-primary transition-opacity hover:opacity-60"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xl font-medium tracking-tight leading-snug sm:text-[1.25rem]">
+            {stripEmojis(item.subject)}
+          </div>
+          <div className="text-[0.8rem] text-text-secondary flex gap-4 flex-wrap">
             <span>{item.sender}</span>
             <span>{date}</span>
           </div>
         </div>
-        <div className="accordion-right">
+        <div className="flex items-center gap-2.5 shrink-0 mt-1">
           {item.tags.length > 0 && (
-            <div className="tag-dots">
+            <div className="flex gap-[5px] items-center">
               {item.tags.map((tag, i) => {
                 const color = TAG_COLORS[tagColorIndex(tag)]
                 return (
                   <span
                     key={i}
-                    className="tag-dot"
+                    className="tooltip-right relative w-[7px] h-[7px] rounded-full shrink-0"
                     style={{ background: color.dot }}
                     data-tooltip={tag}
                   />
@@ -96,19 +105,25 @@ export function AccordionItem({ item }: AccordionItemProps) {
               })}
             </div>
           )}
-          <span className="accordion-toggle">+</span>
+          <span className={clsx(
+            'text-2xl font-light leading-none transition-transform shrink-0',
+            open && 'rotate-45'
+          )}>+</span>
         </div>
       </button>
-      <div className="accordion-body">
-        <div className="accordion-content">
+      <div className={clsx(
+        'max-h-0 overflow-hidden transition-[max-height] duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]',
+        open && 'max-h-[2000px]'
+      )}>
+        <div className="pb-6">
           {item.tags.length > 0 && (
-            <div className="tags">
+            <div className="flex gap-2 mb-4 flex-wrap">
               {item.tags.map((tag, i) => {
                 const color = getTagColor(tag)
                 return (
                   <span
                     key={i}
-                    className="tag"
+                    className="text-xs px-2.5 py-1 border rounded-full tracking-wide lowercase"
                     style={{ background: color.bg, borderColor: color.border, color: color.dot }}
                   >
                     {tag}
@@ -118,23 +133,30 @@ export function AccordionItem({ item }: AccordionItemProps) {
             </div>
           )}
 
-          <p className="summary-text">{cleanSummary(item.summary)}</p>
+          <p className="text-base leading-relaxed text-text-primary max-w-[720px]">
+            {cleanSummary(item.summary)}
+          </p>
 
           {hasContent ? (
-            <div className="content-sections">
+            <div className="mt-5 flex flex-col gap-5">
               {contentSections.map((section, i) => (
                 <SectionBlock key={i} section={section} />
               ))}
             </div>
           ) : flatLinks.length > 0 ? (
-            <ul className="link-list">
+            <ul className="list-none mt-5 p-0 flex flex-col gap-2.5">
               {flatLinks.map((link, i) => (
-                <li key={i} className="link-item">
-                  <a href={link.url} target="_blank" rel="noopener noreferrer">
+                <li key={i} className="text-sm leading-relaxed">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-primary no-underline font-medium border-b border-border hover:border-text-primary transition-colors"
+                  >
                     {link.title || link.url}
                   </a>
                   {link.description && (
-                    <span className="link-desc"> — {link.description}</span>
+                    <span className="text-text-secondary font-normal"> — {link.description}</span>
                   )}
                 </li>
               ))}

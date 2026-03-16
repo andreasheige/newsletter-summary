@@ -39,13 +39,13 @@ export function Controls({
   }, [tagOpen])
 
   return (
-    <section className="controls">
-      <div className="controls-inner">
-        <div className="controls-row">
-          <p className="count-label">
+    <section className="max-w-[1200px] mx-auto px-4 sm:px-8">
+      <div className="border-b border-border pb-4 -mx-6 px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+          <p className="text-sm text-text-secondary">
             {total} newsletter{total !== 1 ? 's' : ''} summarized
           </p>
-          <div className="controls-right">
+          <div className="flex items-center gap-4">
             <select
               className="sender-filter"
               value={sender}
@@ -57,30 +57,30 @@ export function Controls({
               ))}
             </select>
 
-            <div className="tag-filter-wrap" ref={dropRef}>
+            <div className="relative" ref={dropRef}>
               <button
-                className={`sender-filter tag-filter-btn ${activeTags.length > 0 ? 'has-active' : ''}`}
+                className={`sender-filter text-left whitespace-nowrap ${activeTags.length > 0 ? '!border-text-primary' : ''}`}
                 onClick={() => setTagOpen(!tagOpen)}
               >
                 {activeTags.length === 0 ? 'All tags' : 'Tags'}
               </button>
               {tagOpen && (
-                <div className="tag-dropdown">
-                  <div className="tag-dropdown-list">
+                <div className="absolute top-[calc(100%+6px)] right-0 bg-bg border border-border rounded-xl p-2 min-w-[220px] max-h-80 overflow-y-auto z-50 shadow-lg">
+                  <div className="flex flex-col gap-0.5">
                     {tags.map((tag) => {
                       const active = activeTags.includes(tag)
                       const color = getTagColor(tag)
                       return (
                         <button
                           key={tag}
-                          className={`tag-dropdown-item ${active ? 'active' : ''}`}
+                          className={`font-sans text-[0.78rem] flex items-center gap-2 px-2.5 py-1.5 border border-transparent rounded-full bg-transparent text-text-secondary cursor-pointer text-left transition-all whitespace-nowrap hover:text-text-primary hover:bg-bg-secondary ${active ? 'font-medium' : ''}`}
                           onClick={() => onTagToggle(tag)}
                           style={active
                             ? { background: color.bg, borderColor: color.border, color: color.dot }
                             : undefined
                           }
                         >
-                          <span className="tag-dropdown-dot" style={{ background: color.dot }} />
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color.dot }} />
                           {tag}
                         </button>
                       )
@@ -103,14 +103,14 @@ export function Controls({
           </div>
         </div>
         {activeTags.length > 0 && (
-          <div className="active-tags-bar">
-            <div className="active-tag-dots">
+          <div className="flex items-center gap-2.5 pt-3">
+            <div className="flex gap-1.5 items-center flex-wrap">
               {activeTags.map((tag) => {
                 const color = getTagColor(tag)
                 return (
                   <span
                     key={tag}
-                    className="active-tag-dot"
+                    className="relative w-[9px] h-[9px] rounded-full shrink-0 cursor-pointer transition-transform hover:scale-[1.4] hover:opacity-70"
                     style={{ background: color.dot }}
                     data-tooltip={tag}
                     onClick={() => onTagToggle(tag)}
@@ -118,7 +118,11 @@ export function Controls({
                 )
               })}
             </div>
-            <button className="tag-clear-btn" onClick={onClearTags} title="Clear tag filters">
+            <button
+              className="font-sans text-lg leading-none text-text-secondary bg-transparent border-none cursor-pointer px-0.5 transition-colors hover:text-text-primary"
+              onClick={onClearTags}
+              title="Clear tag filters"
+            >
               &times;
             </button>
           </div>
