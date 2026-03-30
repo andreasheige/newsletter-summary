@@ -33,23 +33,83 @@ export function extractNewsletterContent(plainText: string, html: string, sender
       // Merge HTML links if available
       if (html) {
         const htmlLinks = extractLinks(html)
+        const usedHtmlIndices = new Set<number>()
+
         // Try to match TLDR articles to actual URLs from HTML
         for (const link of tldrResult.links) {
-          if (!link.url) {
-            // Find a matching HTML link by label similarity
-            const match = htmlLinks.find(hl =>
-              link.label.toLowerCase().includes(hl.label.toLowerCase().slice(0, 20)) ||
-              hl.label.toLowerCase().includes(link.label.split('(')[0].trim().toLowerCase().slice(0, 20))
-            )
-            if (match) link.url = match.url
+          if (link.url) continue
+          // Extract just the title (without "(X minute read)" suffix)
+          const title = link.label.replace(/\s*\(\d+\s+minute\s+read\)\s*$/i, '').trim().toLowerCase()
+          if (!title) continue
+
+          // Try progressively looser matching
+          let bestIdx = -1
+
+          // 1) Exact title match
+          bestIdx = htmlLinks.findIndex((hl, idx) =>
+            !usedHtmlIndices.has(idx) && hl.label.toLowerCase().trim() === title
+          )
+
+          // 2) HTML label starts with title or vice versa (at least 15 chars)
+          if (bestIdx === -1 && title.length >= 15) {
+            bestIdx = htmlLinks.findIndex((hl, idx) => {
+              if (usedHtmlIndices.has(idx)) return false
+              const hlLower = hl.label.toLowerCase().trim()
+              return hlLower.startsWith(title.slice(0, 30)) || title.startsWith(hlLower.slice(0, 30))
+            })
+          }
+
+          // 3) Significant word overlap (for slightly different titles)
+          if (bestIdx === -1) {
+            const titleWords = title.split(/\s+/).filter(w => w.length > 3)
+            if (titleWords.length >= 2) {
+              let bestOverlap = 0
+              htmlLinks.forEach((hl, idx) => {
+                if (usedHtmlIndices.has(idx)) return
+                const hlWords = hl.label.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+                const overlap = titleWords.filter(w => hlWords.includes(w)).length
+                const ratio = overlap / Math.max(titleWords.length, 1)
+                if (ratio > 0.5 && overlap > bestOverlap) {
+                  bestOverlap = overlap
+                  bestIdx = idx
+                }
+              })
+            }
+          }
+
+          if (bestIdx !== -1) {
+            link.url = htmlLinks[bestIdx].url
+            usedHtmlIndices.add(bestIdx)
           }
         }
+
+        // Also match section-level links
+        for (const section of tldrResult.sections) {
+          for (const link of section.links) {
+            if (link.url) continue
+            const matched = tldrResult.links.find(l => l.label === link.label && l.url)
+            if (matched) link.url = matched.url
+          }
+        }
+
+        // Remove links that still have no URL
+        tldrResult.links = tldrResult.links.filter(l => l.url)
+        for (const section of tldrResult.sections) {
+          section.links = section.links.filter(l => l.url)
+        }
+
         // Add any remaining HTML links not already matched
         const usedUrls = new Set(tldrResult.links.map(l => l.url))
         for (const hl of htmlLinks) {
           if (!usedUrls.has(hl.url)) {
             tldrResult.links.push(hl)
           }
+        }
+      } else {
+        // No HTML — strip links with no URL
+        tldrResult.links = tldrResult.links.filter(l => l.url)
+        for (const section of tldrResult.sections) {
+          section.links = section.links.filter(l => l.url)
         }
       }
       return tldrResult

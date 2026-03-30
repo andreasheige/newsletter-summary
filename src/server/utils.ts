@@ -140,61 +140,63 @@ export function cleanEmailBody(text: string): string {
  * Extract HTML part from raw MIME email source.
  * Finds the text/html boundary part and decodes it.
  */
-export function extractHtmlFromMime(mimeSource: string): string {
-  if (!mimeSource) return ''
+export function extractHtmlFromMime(mimeSource: string, depth = 0): string {
+  if (!mimeSource || depth > 5) return ''
 
   const boundaryMatch = mimeSource.match(/boundary="?([^\s";]+)"?/i)
   if (!boundaryMatch) return ''
 
   const boundary = boundaryMatch[1]
-  const escapedBoundary = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = mimeSource.split(new RegExp(`--${escapedBoundary}`, 'g'))
+  // Use string split instead of regex to avoid stack issues on large strings
+  const parts = mimeSource.split(`--${boundary}`)
 
+  // First pass: look for text/html parts
   for (const part of parts) {
-    if (!/Content-Type:\s*text\/html/i.test(part)) continue
+    // Get the content type from the first few hundred chars (headers area)
+    const headerArea = part.slice(0, 500)
+    const ctMatch = headerArea.match(/Content-Type:\s*([^\s;]+)/i)
+    if (!ctMatch) continue
+    const contentType = ctMatch[1].toLowerCase()
 
-    // Find the body after headers (double newline)
-    const headerEnd = part.indexOf('\n\n')
-    let htmlBody = headerEnd !== -1 ? part.slice(headerEnd + 2) : part
+    if (contentType === 'text/html') {
+      // Find the body after headers (double newline)
+      const headerEnd = part.indexOf('\n\n')
+      let htmlBody = headerEnd !== -1 ? part.slice(headerEnd + 2) : part
 
-    // Strip trailing boundary marker
-    htmlBody = htmlBody.replace(/--$/, '').trim()
+      // Strip trailing boundary marker
+      htmlBody = htmlBody.replace(/--\s*$/, '').trim()
 
-    // Check for nested multipart (some emails have multipart/alternative inside multipart/mixed)
-    const nestedBoundary = part.match(/boundary="?([^\s";]+)"?/i)
-    if (nestedBoundary) {
-      const nested = extractHtmlFromMime(part)
-      if (nested) return nested
+      // Decode quoted-printable if needed
+      const isQP = /Content-Transfer-Encoding:\s*quoted-printable/i.test(headerArea)
+      if (isQP) {
+        htmlBody = htmlBody.replace(/=\r?\n/g, '')
+        htmlBody = htmlBody.replace(/=([0-9A-Fa-f]{2})/g, (_m, hex) =>
+          String.fromCharCode(parseInt(hex, 16))
+        )
+        try {
+          const bytes = new Uint8Array([...htmlBody].map(c => c.charCodeAt(0)))
+          htmlBody = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+        } catch { /* keep as-is */ }
+      }
+
+      // Decode base64 if needed
+      const isB64 = /Content-Transfer-Encoding:\s*base64/i.test(headerArea)
+      if (isB64) {
+        try {
+          htmlBody = Buffer.from(htmlBody.replace(/\s/g, ''), 'base64').toString('utf-8')
+        } catch { /* keep as-is */ }
+      }
+
+      if (htmlBody.includes('<') && htmlBody.length > 100) return htmlBody
     }
-
-    // Decode quoted-printable if needed
-    const isQP = /Content-Transfer-Encoding:\s*quoted-printable/i.test(part)
-    if (isQP) {
-      htmlBody = htmlBody.replace(/=\r?\n/g, '')
-      htmlBody = htmlBody.replace(/=([0-9A-Fa-f]{2})/g, (_m, hex) =>
-        String.fromCharCode(parseInt(hex, 16))
-      )
-      try {
-        const bytes = new Uint8Array([...htmlBody].map(c => c.charCodeAt(0)))
-        htmlBody = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
-      } catch { /* keep as-is */ }
-    }
-
-    // Decode base64 if needed
-    const isB64 = /Content-Transfer-Encoding:\s*base64/i.test(part)
-    if (isB64) {
-      try {
-        htmlBody = Buffer.from(htmlBody.replace(/\s/g, ''), 'base64').toString('utf-8')
-      } catch { /* keep as-is */ }
-    }
-
-    if (htmlBody.includes('<') && htmlBody.length > 100) return htmlBody
   }
 
-  // Try nested multipart/alternative
+  // Second pass: recurse into nested multipart parts
   for (const part of parts) {
-    if (/Content-Type:\s*multipart\/alternative/i.test(part)) {
-      const nested = extractHtmlFromMime(part)
+    const headerArea = part.slice(0, 500)
+    const ctMatch = headerArea.match(/Content-Type:\s*multipart\//i)
+    if (ctMatch) {
+      const nested = extractHtmlFromMime(part, depth + 1)
       if (nested) return nested
     }
   }

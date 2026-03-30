@@ -74,7 +74,7 @@ export function Header({ status, statusError, theme, onToggleTheme, onReload }: 
     : statusError
       ? 'Cannot reach server'
       : status
-        ? `${status.newsletters} newsletters | Model: ${status.ollamaModel}`
+        ? `${status.newsletters} newsletters | ${status.llmProvider}: ${status.llmModel}`
         : 'Checking status...'
 
   return (

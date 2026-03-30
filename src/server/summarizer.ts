@@ -4,10 +4,27 @@ import type { Link } from '../shared/types.js'
 
 const OLLAMA_URL = () => process.env.OLLAMA_URL || 'http://localhost:11434'
 const OLLAMA_MODEL = () => process.env.OLLAMA_MODEL || 'llama3.2'
+const OPENAI_API_KEY = () => process.env.OPENAI_API_KEY || ''
+const OPENAI_MODEL = () => process.env.OPENAI_MODEL || 'gpt-4.1-mini'
+
+export function useOpenAI(): boolean {
+  // Disabled — set to true manually when OpenAI quota is available
+  return false
+}
+
+export function getProviderInfo(): { provider: string; model: string } {
+  if (useOpenAI()) return { provider: 'openai', model: OPENAI_MODEL() }
+  return { provider: 'ollama', model: OLLAMA_MODEL() }
+}
 
 let starting = false
 
 export async function ensureOllamaRunning(): Promise<boolean> {
+  if (useOpenAI()) {
+    console.log(`[OpenAI] Using OpenAI (${OPENAI_MODEL()}) — skipping Ollama`)
+    return true
+  }
+
   let serverUp = false
   try {
     const resp = await fetch(`${OLLAMA_URL()}/api/version`)
@@ -161,6 +178,52 @@ export function parseLlmResponse(raw: string): { summary: string; tags: string[]
   return { summary: stripPreamble(text), tags }
 }
 
+async function summarizeWithOpenAI(prompt: string): Promise<string> {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY()}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL(),
+      messages: [
+        { role: 'system', content: 'You summarize newsletters. Always respond with valid JSON only.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+    }),
+  })
+
+  if (!resp.ok) {
+    const body = await resp.text()
+    throw new Error(`OpenAI returned ${resp.status}: ${body}`)
+  }
+
+  const data = await resp.json() as { choices: Array<{ message: { content: string } }> }
+  return data.choices[0].message.content.trim()
+}
+
+async function summarizeWithOllama(prompt: string): Promise<string> {
+  await ensureOllamaRunning()
+
+  const resp = await fetch(`${OLLAMA_URL()}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL(),
+      prompt,
+      stream: false,
+      options: { temperature: 0.3 },
+    }),
+  })
+
+  if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`)
+
+  const data = await resp.json() as { response: string }
+  return data.response.trim()
+}
+
 export async function summarize(subject: string, text: string, links: RawLink[] = []): Promise<SummarizeResult> {
   const prompt = `Summarize this newsletter in 2-4 sentences. Then list 1-4 topic tags.
 
@@ -174,23 +237,10 @@ ${text.slice(0, 6000)}
 JSON:`
 
   try {
-    await ensureOllamaRunning()
+    const raw = useOpenAI()
+      ? await summarizeWithOpenAI(prompt)
+      : await summarizeWithOllama(prompt)
 
-    const resp = await fetch(`${OLLAMA_URL()}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL(),
-        prompt,
-        stream: false,
-        options: { temperature: 0.3 },
-      }),
-    })
-
-    if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`)
-
-    const data = await resp.json() as { response: string }
-    const raw = data.response.trim()
     const { summary, tags } = parseLlmResponse(raw)
 
     const contentLinks: Link[] = links

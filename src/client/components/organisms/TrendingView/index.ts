@@ -1,0 +1,1 @@
+export { TrendingView } from './TrendingView'

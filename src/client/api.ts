@@ -1,4 +1,4 @@
-import type { PaginatedResponse, StatusResponse, ActionResponse } from '../shared/types'
+import type { PaginatedResponse, StatusResponse, ActionResponse, TrendingResponse, ServiceStatusResponse } from '../shared/types'
 
 export async function fetchNewsletters(page: number, limit: number, sender?: string): Promise<PaginatedResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) })
@@ -55,5 +55,15 @@ export interface JobStatus {
 
 export async function fetchJobStatus(): Promise<JobStatus> {
   const res = await fetch('/api/job')
+  return res.json()
+}
+
+export async function fetchTrending(): Promise<TrendingResponse> {
+  const res = await fetch('/api/trending')
+  return res.json()
+}
+
+export async function fetchServiceStatus(): Promise<ServiceStatusResponse> {
+  const res = await fetch('/api/service-status')
   return res.json()
 }

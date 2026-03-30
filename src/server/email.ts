@@ -2,11 +2,23 @@ import { execFile } from 'child_process'
 import { htmlToText, extractLinks, extractHtmlFromMime } from './utils.js'
 import type { Email } from './types.js'
 
-function runAppleScript(script: string): Promise<string> {
+function runAppleScript(script: string, timeoutMs = 300_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script], { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr || err.message))
-      else resolve(stdout.trim())
+    const child = execFile('osascript', ['-e', script], { maxBuffer: 50 * 1024 * 1024, timeout: timeoutMs }, (err, stdout, stderr) => {
+      if (err) {
+        const killed = (err as NodeJS.ErrnoException & { killed?: boolean }).killed
+        if (killed) {
+          reject(new Error(`AppleScript killed after ${timeoutMs / 1000}s timeout`))
+        } else if (stderr?.trim()) {
+          reject(new Error(stderr.trim()))
+        } else {
+          // Extract just the meaningful part, not the full command
+          const msg = err.message.replace(/^Command failed:.*\n?/, '').trim()
+          reject(new Error(msg || 'AppleScript failed (no details)'))
+        }
+      } else {
+        resolve(stdout.trim())
+      }
     })
   })
 }
@@ -19,10 +31,15 @@ export async function fetchNewEmails(since: Date): Promise<Email[]> {
   const DELIM = '%%NLSEP%%'
   const FIELD_DELIM = '%%FLDSEP%%'
 
+  // Iterate messages newest-first and stop when past cutoff.
+  // This avoids the extremely slow "whose date received >= X" filter
+  // which forces Mail.app to scan the entire inbox.
   const script = `
     set output to ""
     set fieldSep to "${FIELD_DELIM}"
     set recSep to "${DELIM}"
+    set collected to 0
+    set maxMsgs to 5000
     -- Build date in a locale-independent way
     set sinceDate to current date
     set year of sinceDate to ${year}
@@ -32,36 +49,41 @@ export async function fetchNewEmails(since: Date): Promise<Email[]> {
     set minutes of sinceDate to 0
     set seconds of sinceDate to 0
     tell application "Mail"
-      set msgs to (messages of inbox whose date received >= sinceDate)
-      set msgCount to count of msgs
-      if msgCount > 1000 then set msgCount to 1000
-      repeat with i from 1 to msgCount
-        set msg to item i of msgs
-        set msgId to message id of msg
-        set subj to subject of msg
-        set sndr to sender of msg
-        set dt to date received of msg
-        set dtStr to (year of dt as text) & "-" & text -2 thru -1 of ("0" & ((month of dt as number) as text)) & "-" & text -2 thru -1 of ("0" & (day of dt as text)) & "T" & text -2 thru -1 of ("0" & (hours of dt as text)) & ":" & text -2 thru -1 of ("0" & (minutes of dt as text)) & ":00"
-        set plainBod to "(no content)"
-        set htmlBod to ""
-        try
-          set plainBod to content of msg
-        end try
-        try
-          set htmlBod to html content of msg
-        end try
-        if length of htmlBod is 0 then
+      with timeout of 300 seconds
+        set msgCount to count of messages of inbox
+        -- Iterate newest first (message 1 is newest in inbox)
+        repeat with i from 1 to msgCount
+          if collected >= maxMsgs then exit repeat
+          set msg to message i of inbox
+          set dt to date received of msg
+          -- Stop once we hit messages older than cutoff
+          if dt < sinceDate then exit repeat
+          set msgId to message id of msg
+          set subj to subject of msg
+          set sndr to sender of msg
+          set dtStr to (year of dt as text) & "-" & text -2 thru -1 of ("0" & ((month of dt as number) as text)) & "-" & text -2 thru -1 of ("0" & (day of dt as text)) & "T" & text -2 thru -1 of ("0" & (hours of dt as text)) & ":" & text -2 thru -1 of ("0" & (minutes of dt as text)) & ":00"
+          set plainBod to "(no content)"
+          set htmlBod to ""
           try
-            set srcBod to source of msg
-            if srcBod contains "text/html" then
-              set htmlBod to "%%MIMESRC%%" & srcBod
-            end if
+            set plainBod to content of msg
           end try
-        end if
-        if length of plainBod > 8000 then set plainBod to text 1 thru 8000 of plainBod
-        if length of htmlBod > 50000 then set htmlBod to text 1 thru 50000 of htmlBod
-        set output to output & msgId & fieldSep & subj & fieldSep & sndr & fieldSep & dtStr & fieldSep & plainBod & fieldSep & htmlBod & recSep
-      end repeat
+          try
+            set htmlBod to html content of msg
+          end try
+          if length of htmlBod is 0 then
+            try
+              set srcBod to source of msg
+              if srcBod contains "text/html" then
+                set htmlBod to "%%MIMESRC%%" & srcBod
+              end if
+            end try
+          end if
+          if length of plainBod > 8000 then set plainBod to text 1 thru 8000 of plainBod
+          if length of htmlBod > 200000 then set htmlBod to text 1 thru 200000 of htmlBod
+          set output to output & msgId & fieldSep & subj & fieldSep & sndr & fieldSep & dtStr & fieldSep & plainBod & fieldSep & htmlBod & recSep
+          set collected to collected + 1
+        end repeat
+      end timeout
     end tell
     return output
   `

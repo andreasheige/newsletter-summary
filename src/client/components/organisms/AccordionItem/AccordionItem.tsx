@@ -20,7 +20,7 @@ export function AccordionItem({ item }: AccordionItemProps) {
     s => s.links.length > 0 || (s.title && isRealContent(s.body))
   ) ?? []
   const hasContent = contentSections.length > 0
-  const flatLinks = item.links ?? []
+  const flatLinks = (item.links ?? []).filter(l => l.url && l.url !== '#')
 
   const tagDots = item.tags.map(tag => ({
     tag,

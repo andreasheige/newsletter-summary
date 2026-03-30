@@ -11,7 +11,7 @@ type Story = StoryObj<typeof Header>
 
 export const Default: Story = {
   args: {
-    status: { status: 'ok', newsletters: 42, source: 'Mail.app', ollamaUrl: 'http://localhost:11434', ollamaModel: 'llama3.2', cronSchedule: '0 */6 * * *' },
+    status: { status: 'ok', newsletters: 42, source: 'Mail.app', llmProvider: 'openai', llmModel: 'gpt-4.1-mini', cronSchedule: '0 */6 * * *' },
     statusError: false,
     theme: 'light',
     onToggleTheme: () => {},

@@ -39,8 +39,9 @@ export interface StatusResponse {
   status: string
   newsletters: number
   source: string
-  ollamaUrl: string
-  ollamaModel: string
+  llmProvider: string
+  llmModel: string
+  ollamaUrl?: string
   cronSchedule: string
 }
 
@@ -53,4 +54,51 @@ export interface ActionResponse {
   deleted?: number
   total?: number
   error?: string
+}
+
+// --- Tab navigation ---
+export type TabId = 'newsletters' | 'trending' | 'status'
+
+// --- Trending Tab ---
+export interface TrendingItem {
+  id: string
+  title: string
+  url: string
+  source: 'hackernews' | 'reddit' | 'lobsters'
+  subreddit?: string
+  score: number
+  commentCount: number
+  commentUrl: string
+  author: string
+  createdAt: string
+}
+
+export interface TrendingResponse {
+  items: TrendingItem[]
+  fetchedAt: string
+}
+
+// --- Status Tab ---
+export type ServiceHealth = 'operational' | 'degraded' | 'major' | 'unknown'
+
+export interface StatusIncident {
+  id: string
+  title: string
+  description: string
+  url: string
+  publishedAt: string
+  service: string
+}
+
+export interface ServiceStatus {
+  name: string
+  slug: string
+  health: ServiceHealth
+  incidents: StatusIncident[]
+  feedUrl: string
+  fetchedAt: string
+}
+
+export interface ServiceStatusResponse {
+  services: ServiceStatus[]
 }

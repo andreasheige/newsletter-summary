@@ -4,7 +4,9 @@ import cron from 'node-cron'
 import path from 'path'
 import { getPage, getPageBySender, getCount, getCountBySender, getSenders, getAllTags } from './db.js'
 import { processNewEmails, retryFailed, resummarizeAll, refetchAll } from './worker.js'
-import { ensureOllamaRunning } from './summarizer.js'
+import { ensureOllamaRunning, getProviderInfo } from './summarizer.js'
+import { getTrending } from './trending.js'
+import { getAllServiceStatuses } from './serviceStatus.js'
 import type { Newsletter } from '../shared/types.js'
 
 const app = express()
@@ -140,14 +142,36 @@ app.get('/api/job', (_req, res) => {
 // API: Health check
 app.get('/api/status', (_req, res) => {
   const count = getCount()
+  const { provider, model } = getProviderInfo()
   res.json({
     status: 'running',
     newsletters: count,
     source: 'macOS Mail.app',
-    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
-    ollamaModel: process.env.OLLAMA_MODEL || 'llama3.2',
+    llmProvider: provider,
+    llmModel: model,
+    ollamaUrl: provider === 'ollama' ? (process.env.OLLAMA_URL || 'http://localhost:11434') : undefined,
     cronSchedule: process.env.CRON_SCHEDULE || '0 */6 * * *',
   })
+})
+
+// API: Get trending tech items
+app.get('/api/trending', async (_req, res) => {
+  try {
+    const data = await getTrending()
+    res.json(data)
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to fetch trending data' })
+  }
+})
+
+// API: Get service statuses
+app.get('/api/service-status', async (_req, res) => {
+  try {
+    const data = await getAllServiceStatuses()
+    res.json(data)
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to fetch service statuses' })
+  }
 })
 
 // SPA fallback for production

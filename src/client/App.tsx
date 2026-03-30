@@ -5,13 +5,18 @@ import { Controls } from './components/organisms/Controls'
 import { Feed } from './components/organisms/Feed'
 import { Pagination } from './components/organisms/Pagination'
 import { Footer } from './components/organisms/Footer'
+import { TabBar } from './components/molecules/TabBar'
+import { TrendingView } from './components/organisms/TrendingView'
+import { ServiceStatusView } from './components/organisms/ServiceStatusView'
 import { useNewsletters } from './hooks/useNewsletters'
 import { useSenders } from './hooks/useSenders'
 import { useTags } from './hooks/useTags'
 import { useStatus } from './hooks/useStatus'
 import { useTheme } from './hooks/useTheme'
+import type { TabId } from '../shared/types'
 
 export function App() {
+  const [tab, setTab] = useState<TabId>('newsletters')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(25)
   const [sender, setSender] = useState('')
@@ -55,29 +60,36 @@ export function App() {
         onToggleTheme={toggleTheme}
         onReload={reload}
       />
+      <TabBar activeTab={tab} onTabChange={setTab} />
       <main>
-        <Hero />
-        <Controls
-          total={data?.total ?? 0}
-          limit={limit}
-          onLimitChange={handleLimitChange}
-          senders={senders}
-          sender={sender}
-          onSenderChange={handleSenderChange}
-          tags={allTags}
-          activeTags={activeTags}
-          onTagToggle={handleTagToggle}
-          onClearTags={handleClearTags}
-        />
-        <Feed items={filteredItems} loading={loading} />
-        {data && data.totalPages > 1 && limit !== 0 && (
-          <Pagination
-            page={data.page}
-            totalPages={data.totalPages}
-            onPrev={() => setPage(p => Math.max(1, p - 1))}
-            onNext={() => setPage(p => p + 1)}
-          />
+        {tab === 'newsletters' && (
+          <>
+            <Hero />
+            <Controls
+              total={data?.total ?? 0}
+              limit={limit}
+              onLimitChange={handleLimitChange}
+              senders={senders}
+              sender={sender}
+              onSenderChange={handleSenderChange}
+              tags={allTags}
+              activeTags={activeTags}
+              onTagToggle={handleTagToggle}
+              onClearTags={handleClearTags}
+            />
+            <Feed items={filteredItems} loading={loading} />
+            {data && data.totalPages > 1 && limit !== 0 && (
+              <Pagination
+                page={data.page}
+                totalPages={data.totalPages}
+                onPrev={() => setPage(p => Math.max(1, p - 1))}
+                onNext={() => setPage(p => p + 1)}
+              />
+            )}
+          </>
         )}
+        {tab === 'trending' && <TrendingView />}
+        {tab === 'status' && <ServiceStatusView />}
       </main>
       <Footer />
     </>

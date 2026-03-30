@@ -11,11 +11,11 @@ export function SectionBlock({ section, className }: SectionBlockProps) {
           {stripEmojis(section.title)}
         </h4>
       )}
-      {section.links.length > 0 && (
+      {section.links.filter(l => l.url && l.url !== '#').length > 0 && (
         <ul className="list-none mt-5 p-0 flex flex-col gap-2.5">
-          {section.links.map((link, i) => (
+          {section.links.filter(l => l.url && l.url !== '#').map((link, i) => (
             <li key={i} className="text-sm leading-relaxed">
-              <ExternalLink href={link.url || '#'}>
+              <ExternalLink href={link.url}>
                 {link.label || link.url}
               </ExternalLink>
             </li>
