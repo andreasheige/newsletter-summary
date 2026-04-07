@@ -23,6 +23,10 @@ interface JobState {
 }
 const job: JobState = { running: false, type: '', progress: 0, total: 0, error: '', startedAt: 0 }
 
+// Track when cron/manual jobs last ran
+let lastCheckAt: string | null = null
+let lastCheckResult: string | null = null
+
 // In production, serve Vite build output
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(import.meta.dirname, '..', '..', 'dist', 'client')))
@@ -97,6 +101,8 @@ app.post('/api/check-now', (_req, res) => {
   const started = startJob('check', async () => {
     const result = await processNewEmails()
     job.progress = result.processed
+    lastCheckAt = new Date().toISOString()
+    lastCheckResult = `Processed: ${result.processed}, Skipped: ${result.skipped}`
   })
   if (started) res.json({ success: true })
   else res.status(409).json({ success: false, error: 'A job is already running' })
@@ -151,6 +157,8 @@ app.get('/api/status', (_req, res) => {
     llmModel: model,
     ollamaUrl: provider === 'ollama' ? (process.env.OLLAMA_URL || 'http://localhost:11434') : undefined,
     cronSchedule: process.env.CRON_SCHEDULE || '0 */6 * * *',
+    lastCheckAt,
+    lastCheckResult,
   })
 })
 
@@ -186,9 +194,12 @@ if (process.env.NODE_ENV === 'production') {
 // Schedule background email checks
 const schedule = process.env.CRON_SCHEDULE || '0 */6 * * *'
 if (cron.validate(schedule)) {
-  cron.schedule(schedule, () => {
+  cron.schedule(schedule, async () => {
     console.log(`[Cron] Running scheduled email check...`)
-    processNewEmails()
+    const result = await processNewEmails()
+    lastCheckAt = new Date().toISOString()
+    lastCheckResult = `Processed: ${result.processed}, Skipped: ${result.skipped}`
+    console.log(`[Cron] Done. ${lastCheckResult}`)
   })
   console.log(`[Cron] Scheduled email checks: ${schedule}`)
 } else {

@@ -69,12 +69,16 @@ export function Header({ status, statusError, theme, onToggleTheme, onReload }: 
     : status ? 'ok' as const
     : 'unknown' as const
 
+  const lastCheck = status?.lastCheckAt
+    ? `Last check: ${new Date(status.lastCheckAt).toLocaleString()}`
+    : null
+
   const statusTitle = anyBusy
     ? `Running: ${jobType}...`
     : statusError
       ? 'Cannot reach server'
       : status
-        ? `${status.newsletters} newsletters | ${status.llmProvider}: ${status.llmModel}`
+        ? `${status.newsletters} newsletters | ${status.llmProvider}: ${status.llmModel}${lastCheck ? ` | ${lastCheck}` : ''}`
         : 'Checking status...'
 
   return (
